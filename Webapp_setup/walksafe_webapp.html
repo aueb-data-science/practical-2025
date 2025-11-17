@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WalkSafe - Pavement Analyzer</title>
+    
+    <!-- PWA Manifest Link -->
+    <link rel="manifest" href="manifest.json">
+    <!-- PWA Theme Color -->
+    <meta name="theme-color" content="#ffffff">
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a better mobile feel */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Style for the custom file input button */
+        .file-input-button {
+            cursor: pointer;
+        }
+        /* Loading spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="h-full antialiased text-gray-900">
+    <div class="flex flex-col min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-md">
+            <div class="max-w-4xl mx-auto px-4 py-4">
+                <h1 class="text-2xl font-bold text-blue-600">🌍 WalkSafe Webapp</h1>
+                <p class="text-gray-600">Report pavement accessibility issues with AI</p>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow max-w-4xl mx-auto p-4 w-full">
+            <div class="space-y-6">
+                <!-- 1. Image Upload Section -->
+                <div class="bg-white p-5 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3">1. Upload Pavement Photo</h2>
+                    
+                    <!-- Custom File Input -->
+                    <label for="image-upload" class="file-input-button w-full inline-block px-5 py-3 text-center bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition-colors">
+                        Choose an image...
+                    </label>
+                    <input type="file" id="image-upload" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+                    
+                    <!-- Image Preview -->
+                    <div id="image-preview-container" class="hidden mt-4">
+                        <img id="image-preview" src="" alt="Image preview" class="w-full max-w-md mx-auto rounded-lg shadow-inner"/>
+                    </div>
+                </div>
+
+                <!-- 2. AI Analysis Section -->
+                <div id="analysis-section" class="bg-white p-5 rounded-lg shadow hidden">
+                    <h2 class="text-lg font-semibold mb-3">2. AI Analysis &amp; Submission</h2>
+                    
+                    <!-- Analyze Button -->
+                    <button id="analyze-button" onclick="analyzeImage()" class="w-full px-5 py-3 bg-green-600 text-white rounded-lg font-semibold shadow-sm hover:bg-green-700 transition-colors">
+                        Analyze Pavement
+                    </button>
+
+                    <!-- Loading Indicator -->
+                    <div id="loading-container" class="hidden flex flex-col items-center justify-center my-4">
+                        <div class="loader"></div>
+                        <p class="mt-2 text-gray-600">Analyzing image with AI... (this may take a moment)</p>
+                    </div>
+
+                    <!-- AI Results & Submission Form -->
+                    <div id="results-form" class="hidden mt-4 space-y-4">
+                        <p class="text-sm text-gray-600">AI has suggested the following. Please correct if needed and submit.</p>
+                        
+                        <!-- AI Analysis Notes -->
+                        <div class="bg-gray-100 p-3 rounded-lg">
+                            <h3 class="font-semibold text-sm">AI Notes:</h3>
+                            <p id="ai-notes" class="text-sm text-gray-700"></p>
+                        </div>
+                        
+                        <div>
+                            <label for="issue-type" class="block text-sm font-medium text-gray-700">Identified Issue</label>
+                            <input type_="text" id="issue-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label for="estimated-length" class="block text-sm font-medium text-gray-700">Estimated Length (meters)</label>
+                            <input type="text" id="estimated-length" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label for="estimated-breadth" class="block text-sm font-medium text-gray-700">Estimated Breadth (meters)</label>
+                            <input type="text" id="estimated-breadth" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">AI Confidence Score</label>
+                            <div id="confidence-score" class="mt-1 text-lg font-bold text-blue-600"></div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button id="submit-button" onclick="submitReport()" class="w-full px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition-colors">
+                            Confirm & Submit Report
+                        </button>
+                        
+                        <!-- Submission Status -->
+                        <p id="submit-status" class="text-center text-green-600 font-semibold hidden"></p>
+                    </div>
+                </div>
+
+                <!-- 3. Submitted Reports Section -->
+                <div class="bg-white p-5 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3">3. Live Report Feed</h2>
+                    <p class="text-sm text-gray-600 mb-4">Reports submitted by all users. (User ID: <span id="user-id" class="font-mono text-xs">loading...</span>)</p>
+                    <div id="reports-list" class="space-y-3 max-h-96 overflow-y-auto">
+                        <p id="reports-placeholder" class="text-gray-500">No reports submitted yet. Sign in to load...</p>
+                        <!-- Reports will be injected here by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase services
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, collection, query, onSnapshot, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL VARIABLES ---
+        let db;
+        let auth;
+        let currentUserId = null;
+        let currentImageBase64 = null;
+        let aiAnalysisResult = null;
+        
+        // --- FIREBASE CONFIG & APP ID ---
+        
+        // This is your user-provided Firebase configuration
+        const firebaseConfig = {
+          apiKey: "******************************",
+          authDomain: "**********************",
+          projectId: "walksafe-1f6c9",
+          storageBucket: "walksafe-1f6c9.firebasestorage.app",
+          messagingSenderId: "1063060269742",
+          appId: "1:1063060269742:web:85cacfa32a1c643caa1b3f",
+          measurementId: "G-S8SQJRHJ2E"
+        };
+        
+        // The __firebase_config variable is only provided in the specific hosting environment.
+        // When running locally, this ensures your config is used.
+        const effectiveConfig = (typeof __firebase_config !== 'undefined') 
+            ? JSON.parse(__firebase_config) 
+            : firebaseConfig;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'walksafe-prototype';
+
+        // --- GEMINI API CONFIG ---
+        const apiKey = ""; // API key is handled by the environment, leave empty.
+        const geminiModel = "gemini-2.5-flash-preview-09-2025";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+
+        // Define the expected JSON schema for the AI response
+        const geminiSchema = {
+            type: "OBJECT",
+            properties: {
+                "issueType": { "type": "STRING", "description": "e.g., 'Cracked Pavement', 'Obstacle on Path', 'Blocked Ramp', 'Uneven Surface', 'No Issue Found', 'No Pavement'" },
+                "estimatedLengthMeters": { "type": "NUMBER", "description": "Estimated length of the issue or pavement in meters. Use '0' if not applicable." },
+                "estimatedBreadthMeters": { "type": "NUMBER", "description": "Estimated breadth (width) of the issue or pavement in meters. Use '0' if not applicable." },
+                "confidenceScore": { "type": "NUMBER", "description": "A confidence score from 0.0 to 1.0 for the overall analysis." },
+                "analysisNotes": { "type": "STRING", "description": "A brief, one-sentence explanation of the finding." }
+            },
+            required: ["issueType", "estimatedLengthMeters", "estimatedBreadthMeters", "confidenceScore", "analysisNotes"]
+        };
+
+        // --- UI ELEMENT REFERENCES ---
+        const imagePreview = document.getElementById('image-preview');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const analysisSection = document.getElementById('analysis-section');
+        const analyzeButton = document.getElementById('analyze-button');
+        const loadingContainer = document.getElementById('loading-container');
+        const resultsForm = document.getElementById('results-form');
+        const aiNotes = document.getElementById('ai-notes');
+        const issueTypeInput = document.getElementById('issue-type');
+        const estimatedLengthInput = document.getElementById('estimated-length');
+        const estimatedBreadthInput = document.getElementById('estimated-breadth');
+        const confidenceScoreDisplay = document.getElementById('confidence-score');
+        const submitButton = document.getElementById('submit-button');
+        const submitStatus = document.getElementById('submit-status');
+        const reportsList = document.getElementById('reports-list');
+        const reportsPlaceholder = document.getElementById('reports-placeholder');
+        const userIdDisplay = document.getElementById('user-id');
+
+        // --- APP INITIALIZATION ---
+
+        function initApp() {
+            try {
+                // Check if the config is empty
+                if (!effectiveConfig.apiKey) {
+                    throw new Error("Firebase config is missing. Please create a Firebase project and paste the config object in the <script> tag.");
+                }
+
+                // Initialize Firebase
+                const app = initializeApp(effectiveConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Enable debug logging for Firestore
+                setLogLevel('Debug');
+
+                // Set up auth state listener
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        // User is signed in
+                        currentUserId = user.uid;
+                        userIdDisplay.textContent = currentUserId;
+                        console.log("User authenticated:", currentUserId);
+                        
+                        // Now that we are authenticated, listen for reports
+                        listenForReports();
+                    } else {
+                        // User is signed out
+                        currentUserId = null;
+                        userIdDisplay.textContent = "Not signed in";
+                        console.log("User is not authenticated.");
+                    }
+                });
+
+                // Authenticate the user
+                authenticateUser();
+
+            } catch (e) {
+                console.error("Error initializing Firebase:", e);
+                alert("Error initializing application. Check console for details.");
+            }
+        }
+
+        async function authenticateUser() {
+            try {
+                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (authToken) {
+                    console.log("Signing in with custom token...");
+                    await signInWithCustomToken(auth, authToken);
+                } else {
+                    // This will be used in VS Code / Live Server
+                    console.log("No custom token found. Signing in anonymously...");
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                userIdDisplay.textContent = "Auth Error";
+            }
+        }
+
+        // --- IMAGE HANDLING ---
+
+        window.handleImageUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Reset UI
+            resetAnalysisUI();
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                currentImageBase64 = reader.result.split(',')[1]; // Get base64 string
+                imagePreview.src = reader.result;
+                imagePreviewContainer.classList.remove('hidden');
+                analysisSection.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function resetAnalysisUI() {
+            analyzeButton.disabled = false;
+            analyzeButton.classList.remove('hidden');
+            loadingContainer.classList.add('hidden');
+            resultsForm.classList.add('hidden');
+            submitButton.disabled = false;
+            submitStatus.classList.add('hidden');
+            aiAnalysisResult = null;
+        }
+
+        // --- GEMINI API CALL ---
+
+        window.analyzeImage = async () => {
+            if (!currentImageBase64) {
+                alert("Please upload an image first.");
+                return;
+            }
+
+            // Show loading state
+            analyzeButton.classList.add('hidden');
+            loadingContainer.classList.remove('hidden');
+            resultsForm.classList.add('hidden');
+
+            const systemPrompt = `You are an AI assistant for the 'WalkSafe' app, specializing in pavement accessibility. Analyze the user's image and return a JSON object adhering to the provided schema.`;
+            const userPrompt = `Analyze this image. Identify the primary accessibility issue (e.g., 'Cracked Pavement', 'Obstacle on Path', 'Blocked Ramp', 'Uneven Surface', 'No Issue Found', 'No Pavement'). Estimate the approximate length AND breadth (width) in meters of the pavement area shown or the issue itself. Provide a confidence score for your analysis. If no pavement is visible, set issueType to 'No Pavement' and lengths/breadths to 0.`;
+
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: userPrompt },
+                            {
+                                inlineData: {
+                                    mimeType: "image/jpeg", // Assuming jpeg, works for png too
+                                    data: currentImageBase64
+                                }
+                            }
+                        ]
+                    }
+                ],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: geminiSchema
+                }
+            };
+            
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log("Gemini API Response:", result);
+
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) {
+                    throw new Error("Invalid response structure from API.");
+                }
+
+                aiAnalysisResult = JSON.parse(text);
+                displayAnalysisResults(aiAnalysisResult);
+
+            } catch (error) {
+                console.error("Error analyzing image:", error);
+                alert(`Error analyzing image: ${error.message}`);
+                analyzeButton.classList.remove('hidden');
+            } finally {
+                loadingContainer.classList.add('hidden');
+            }
+        };
+        
+        // --- API RETRY LOGIC ---
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) {
+                        return response;
+                    }
+                    if (response.status === 429 || response.status >= 500) {
+                        // Throttling or server error, wait and retry
+                        console.warn(`API call failed with status ${response.status}. Retrying in ${delay}ms...`);
+                        await new Promise(res => setTimeout(res, delay * (i + 1)));
+                    } else {
+                        // Other client error, don't retry
+                        return response;
+                    }
+                } catch (error) {
+                    console.warn(`Fetch error: ${error.message}. Retrying in ${delay}ms...`);
+                    await new Promise(res => setTimeout(res, delay * (i + 1)));
+                }
+            }
+            // Last attempt
+            return fetch(url, options);
+        }
+
+        function displayAnalysisResults(data) {
+            aiNotes.textContent = data.analysisNotes || "No notes provided.";
+            issueTypeInput.value = data.issueType || "N/A";
+            estimatedLengthInput.value = data.estimatedLengthMeters?.toString() || "0";
+            estimatedBreadthInput.value = data.estimatedBreadthMeters?.toString() || "0";
+            
+            const confidence = (data.confidenceScore || 0) * 100;
+            confidenceScoreDisplay.textContent = `${confidence.toFixed(1)}%`;
+            if (confidence < 50) {
+                confidenceScoreDisplay.classList.add('text-red-600');
+                confidenceScoreDisplay.classList.remove('text-blue-600', 'text-green-600');
+            } else if (confidence < 80) {
+                confidenceScoreDisplay.classList.add('text-blue-600');
+                confidenceScoreDisplay.classList.remove('text-red-600', 'text-green-600');
+            } else {
+                confidenceScoreDisplay.classList.add('text-green-600');
+                confidenceScoreDisplay.classList.remove('text-red-600', 'text-blue-600');
+            }
+            
+            resultsForm.classList.remove('hidden');
+        }
+
+        // --- FIRESTORE OPERATIONS ---
+
+        window.submitReport = async () => {
+            if (!currentUserId || !aiAnalysisResult) {
+                alert("Cannot submit. Not signed in or no analysis found.");
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitStatus.textContent = "Submitting...";
+            submitStatus.classList.remove('hidden', 'text-red-600');
+            submitStatus.classList.add('text-yellow-600');
+            
+            // Check if user modified the AI's findings
+            const userIssueType = issueTypeInput.value;
+            const userLength = parseFloat(estimatedLengthInput.value) || 0;
+            const userBreadth = parseFloat(estimatedBreadthInput.value) || 0;
+            
+            const userCorrected = (
+                userIssueType !== aiAnalysisResult.issueType ||
+                userLength !== aiAnalysisResult.estimatedLengthMeters ||
+                userBreadth !== aiAnalysisResult.estimatedBreadthMeters
+            );
+
+            const report = {
+                userId: currentUserId,
+                aiIssueType: aiAnalysisResult.issueType,
+                aiLengthMeters: aiAnalysisResult.estimatedLengthMeters,
+                aiBreadthMeters: aiAnalysisResult.estimatedBreadthMeters,
+                aiConfidence: aiAnalysisResult.confidenceScore,
+                aiNotes: aiAnalysisResult.analysisNotes,
+                
+                finalIssueType: userIssueType,
+                finalLengthMeters: userLength,
+                finalBreadthMeters: userBreadth,
+                
+                userCorrected: userCorrected,
+                createdAt: serverTimestamp()
+                // In a real app, you'd add location data here
+            };
+
+            try {
+                // Use the public collection path as per project goals
+                const reportsCollectionPath = `/artifacts/${appId}/public/data/reports`;
+                const reportsCollection = collection(db, reportsCollectionPath);
+                
+                const docRef = await addDoc(reportsCollection, report);
+                console.log("Report submitted with ID:", docRef.id);
+                
+                submitStatus.textContent = "Report submitted successfully!";
+                submitStatus.classList.remove('text-yellow-600');
+                submitStatus.classList.add('text-green-600');
+                
+                // Reset form after a short delay
+                setTimeout(() => {
+                    resetAnalysisUI();
+                    analysisSection.classList.add('hidden');
+                    imagePreviewContainer.classList.add('hidden');
+                    document.getElementById('image-upload').value = null; // Clear file input
+                    currentImageBase64 = null;
+                }, 2000);
+                
+            } catch (error) {
+                console.error("Error submitting report:", error);
+                submitStatus.textContent = `Error: ${error.message}`;
+                submitStatus.classList.remove('text-yellow-600');
+                submitStatus.classList.add('text-red-600');
+                submitButton.disabled = false;
+            }
+        };
+
+        function listenForReports() {
+            if (!db) return;
+            
+            const reportsCollectionPath = `/artifacts/${appId}/public/data/reports`;
+            const q = query(collection(db, reportsCollectionPath)); // Note: No orderBy, as per instructions.
+
+            console.log("Listening for reports at:", reportsCollectionPath);
+
+            onSnapshot(q, (snapshot) => {
+                console.log("Got snapshot with", snapshot.docs.length, "docs.");
+                if (snapshot.empty) {
+                    reportsList.innerHTML = ''; // Clear list
+                    reportsPlaceholder.classList.remove('hidden');
+                    return;
+                }
+
+                reportsPlaceholder.classList.add('hidden');
+                let reports = [];
+                snapshot.forEach(doc => {
+                    reports.push({ id: doc.id, data: doc.data() });
+                });
+                
+                // Sort in memory (newest first)
+                reports.sort((a, b) => {
+                    const timeA = a.data.createdAt?.seconds || 0;
+                    const timeB = b.data.createdAt?.seconds || 0;
+                    return timeB - timeA;
+                });
+
+                renderReports(reports);
+
+            }, (error) => {
+                console.error("Error listening to reports:", error);
+                reportsPlaceholder.textContent = "Error loading reports.";
+                reportsPlaceholder.classList.remove('hidden');
+            });
+        }
+
+        function renderReports(reports) {
+            reportsList.innerHTML = ''; // Clear current list
+            
+            reports.forEach(reportDoc => {
+                const data = reportDoc.data;
+                const date = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString() : 'Just now';
+                
+                const reportEl = document.createElement('div');
+                reportEl.className = 'border border-gray-200 p-3 rounded-lg bg-gray-50';
+                
+                // Handle breadth display, even for older reports
+                const breadthText = data.finalBreadthMeters !== undefined ? `x ${data.finalBreadthMeters}m (B)` : '';
+                
+                reportEl.innerHTML = `
+                    <p class="font-semibold text-blue-700">${data.finalIssueType}</p>
+                    <p class="text-sm text-gray-800">Dimensions: ${data.finalLengthMeters}m (L) ${breadthText}</p>
+                    <p class="text-xs text-gray-500 mt-1">Reported: ${date}</p>
+                    ${data.userCorrected ? '<span class="text-xs mt-1 inline-block bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">User Corrected AI</span>' : ''}
+                `;
+                
+                reportsList.appendChild(reportEl);
+            });
+        }
+
+        // --- PWA Service Worker Registration ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('Service Worker registered successfully:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
+
+        // --- START THE APP ---
+        initApp();
+
+    </script>
+</body>
+</html>
