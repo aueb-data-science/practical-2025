@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WalkSafe - Pavement Analyzer</title>
+    
+    <!-- PWA Manifest Link -->
+    <link rel="manifest" href="manifest.json">
+    <!-- PWA Theme Color -->
+    <meta name="theme-color" content="#ffffff">
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load Leaflet CSS (For the Map) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+
+    <!-- Load Leaflet JS (For the Map) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+    <style>
+        /* Custom styles for a better mobile feel */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Loading spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Map Heights */
+        #global-map {
+            height: 300px;
+            z-index: 0;
+        }
+        #submission-map {
+            height: 200px;
+            width: 100%;
+            border-radius: 0.5rem;
+            margin-top: 10px;
+            z-index: 0;
+        }
+    </style>
+</head>
+<body class="h-full antialiased text-gray-900">
+    <div class="flex flex-col min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-md relative z-10">
+            <div class="max-w-4xl mx-auto px-4 py-4">
+                <h1 class="text-2xl font-bold text-blue-600">🌍 WalkSafe</h1>
+                <p class="text-gray-600">Report pavement accessibility issues with AI</p>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow max-w-4xl mx-auto p-4 w-full">
+            <div class="space-y-6">
+                <!-- 1. Image Upload Section -->
+                <div class="bg-white p-5 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3">1. Capture Evidence</h2>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Camera Button -->
+                        <label for="camera-input" class="cursor-pointer block w-full px-5 py-4 text-center bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition-colors flex flex-col items-center justify-center">
+                            <span class="text-2xl mb-1">📷</span>
+                            <span>Take Photo</span>
+                        </label>
+                        <!-- Capture="environment" forces the rear camera on mobile -->
+                        <input type="file" id="camera-input" class="hidden" accept="image/*" capture="environment" onchange="handleImageUpload(event)">
+
+                        <!-- Gallery Button -->
+                        <label for="gallery-input" class="cursor-pointer block w-full px-5 py-4 text-center bg-white border-2 border-gray-200 text-gray-700 rounded-lg font-semibold shadow-sm hover:bg-gray-50 transition-colors flex flex-col items-center justify-center">
+                            <span class="text-2xl mb-1">🖼️</span>
+                            <span>Upload from Gallery</span>
+                        </label>
+                        <input type="file" id="gallery-input" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+                    </div>
+                    
+                    <!-- Image Preview -->
+                    <div id="image-preview-container" class="hidden mt-4 relative">
+                         <img id="image-preview" src="" alt="Image preview" class="w-full max-w-md mx-auto rounded-lg shadow-inner"/>
+                         <button onclick="resetAnalysisUI()" class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 shadow hover:bg-red-600" title="Remove Image">
+                            ✕
+                         </button>
+                         <p id="privacy-badge" class="hidden text-center text-xs text-green-600 font-bold mt-2">🛡️ Privacy Shield: Faces & Plates Redacted</p>
+                    </div>
+                </div>
+
+                <!-- 2. AI Analysis Section -->
+                <div id="analysis-section" class="bg-white p-5 rounded-lg shadow hidden">
+                    <h2 class="text-lg font-semibold mb-3">2. AI Analysis &amp; Location</h2>
+                    
+                    <!-- Analyze Button -->
+                    <button id="analyze-button" onclick="analyzeImage()" class="w-full px-5 py-3 bg-green-600 text-white rounded-lg font-semibold shadow-sm hover:bg-green-700 transition-colors">
+                        ✨ Analyze Pavement with AI
+                    </button>
+
+                    <!-- Loading Indicator -->
+                    <div id="loading-container" class="hidden flex flex-col items-center justify-center my-4">
+                        <div class="loader"></div>
+                        <p class="mt-2 text-gray-600">Scanning for issues and redacting sensitive info...</p>
+                    </div>
+
+                    <!-- AI Results & Submission Form -->
+                    <div id="results-form" class="hidden mt-4 space-y-4">
+                        
+                        <!-- AI Analysis Notes -->
+                        <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg">
+                            <h3 class="font-semibold text-sm text-blue-800">🤖 AI Analysis:</h3>
+                            <p id="ai-notes" class="text-sm text-blue-900 mt-1"></p>
+                        </div>
+                        
+                        <div>
+                            <label for="issue-type" class="block text-sm font-medium text-gray-700">Identified Issue</label>
+                            <input type_="text" id="issue-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50">
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="estimated-length" class="block text-sm font-medium text-gray-700">Length (m)</label>
+                                <input type="text" id="estimated-length" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="estimated-breadth" class="block text-sm font-medium text-gray-700">Breadth (m)</label>
+                                <input type="text" id="estimated-breadth" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                        </div>
+
+                        <!-- Location Section -->
+                        <div class="border-t pt-4 mt-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="block text-sm font-medium text-gray-700">📍 Incident Location</label>
+                                <button type="button" id="get-location-btn" onclick="getUserLocation(true)" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">
+                                    Get Device Location
+                                </button>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4 mb-2">
+                                <div>
+                                    <input type="text" id="latitude" placeholder="Latitude" class="block w-full rounded-md border-gray-300 shadow-sm text-sm" readonly>
+                                </div>
+                                <div>
+                                    <input type="text" id="longitude" placeholder="Longitude" class="block w-full rounded-md border-gray-300 shadow-sm text-sm" readonly>
+                                </div>
+                            </div>
+                            
+                            <!-- Draggable Pin Map -->
+                            <div id="submission-map"></div>
+                            <p class="text-xs text-gray-500 mt-1 text-center">Drag the blue pin to pinpoint the exact location.</p>
+                        </div>
+                        
+                        <!-- Timestamp Input -->
+                         <div>
+                            <label for="image-timestamp" class="block text-sm font-medium text-gray-700">Image Timestamp (from AI or Upload Time)</label>
+                            <input type="text" id="image-timestamp" placeholder="e.g. 2023-10-27 14:30" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">AI Confidence Score</label>
+                            <div id="confidence-score" class="mt-1 text-lg font-bold text-blue-600"></div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button id="submit-button" onclick="submitReport()" class="w-full px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition-colors">
+                            Confirm & Submit Report
+                        </button>
+                        
+                        <!-- Submission Status -->
+                        <p id="submit-status" class="text-center text-green-600 font-semibold hidden"></p>
+                    </div>
+                </div>
+
+                <!-- 3. Global Issue Map -->
+                <div class="bg-white p-5 rounded-lg shadow">
+                     <h2 class="text-lg font-semibold mb-3">3. Community Map</h2>
+                     <p class="text-sm text-gray-600 mb-2">Issues reported by the community.</p>
+                     <div id="global-map" class="border border-gray-200 rounded-lg"></div>
+                </div>
+
+                <!-- 4. Submitted Reports Section -->
+                <div class="bg-white p-5 rounded-lg shadow">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-semibold">4. Live Report Feed</h2>
+                        <button onclick="downloadCSV()" class="px-3 py-1 text-sm bg-blue-500 text-white rounded-lg shadow-sm hover:bg-blue-600 transition-colors">
+                            Download CSV
+                        </button>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">User ID: <span id="user-id" class="font-mono text-xs">loading...</span></p>
+                    <div id="reports-list" class="space-y-3 max-h-96 overflow-y-auto">
+                        <p id="reports-placeholder" class="text-gray-500">No reports submitted yet. Sign in to load...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, collection, query, onSnapshot, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL VARIABLES ---
+        let db;
+        let auth;
+        let currentUserId = null;
+        let currentImageBase64 = null;
+        let aiAnalysisResult = null;
+        let allReports = []; 
+        let globalMap; 
+        let submissionMap;
+        let submissionMarker;
+        let mapMarkers = []; 
+        
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyDuWCexNYK-dvwlpm2pjmf6h-EZW-jSpOQ",
+          authDomain: "walksafe-1f6c9.firebaseapp.com",
+          projectId: "walksafe-1f6c9",
+          storageBucket: "walksafe-1f6c9.firebasestorage.app",
+          messagingSenderId: "1063060269742",
+          appId: "1:1063060269742:web:85cacfa32a1c643caa1b3f",
+          measurementId: "G-S8SQJRHJ2E"
+        };
+        
+        const effectiveConfig = (typeof __firebase_config !== 'undefined') ? JSON.parse(__firebase_config) : firebaseConfig;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'walksafe-prototype';
+
+        // --- GEMINI API CONFIG ---
+        const apiKey = ""; //Gemini API here
+        const geminiModel = "gemini-2.5-flash-preview-09-2025";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+
+        const geminiSchema = {
+            type: "OBJECT",
+            properties: {
+                "issueType": { "type": "STRING", "description": "e.g., 'Cracked Pavement', 'Obstacle on Path', 'Blocked Ramp', 'Uneven Surface', 'No Issue Found', 'No Pavement'" },
+                "estimatedLengthMeters": { "type": "NUMBER", "description": "Estimated length in meters. Use '0' if not applicable." },
+                "estimatedBreadthMeters": { "type": "NUMBER", "description": "Estimated breadth in meters. Use '0' if not applicable." },
+                "latitude": { "type": "NUMBER", "description": "Latitude extracted from visual text in image. Null if not found." },
+                "longitude": { "type": "NUMBER", "description": "Longitude extracted from visual text in image. Null if not found." },
+                "imageTimestamp": { "type": "STRING", "description": "Timestamp extracted from visual text in image. Null if not found." },
+                "confidenceScore": { "type": "NUMBER", "description": "Confidence 0.0 to 1.0." },
+                "analysisNotes": { "type": "STRING", "description": "Brief explanation of finding." },
+                // New schema field for privacy redaction
+                "privacyBoundingBoxes": {
+                    "type": "ARRAY",
+                    "description": "List of bounding boxes for faces and license plates to be redacted.",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "ymin": { "type": "INTEGER", "description": "Top Y coordinate (0-1000 normalized scale)" },
+                            "xmin": { "type": "INTEGER", "description": "Left X coordinate (0-1000 normalized scale)" },
+                            "ymax": { "type": "INTEGER", "description": "Bottom Y coordinate (0-1000 normalized scale)" },
+                            "xmax": { "type": "INTEGER", "description": "Right X coordinate (0-1000 normalized scale)" },
+                            "label": { "type": "STRING", "description": "e.g. 'face' or 'license_plate'" }
+                        }
+                    }
+                }
+            },
+            required: ["issueType", "estimatedLengthMeters", "estimatedBreadthMeters", "confidenceScore", "analysisNotes"]
+        };
+
+        // --- UI REFS ---
+        const imagePreview = document.getElementById('image-preview');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const privacyBadge = document.getElementById('privacy-badge');
+        const analysisSection = document.getElementById('analysis-section');
+        const analyzeButton = document.getElementById('analyze-button');
+        const loadingContainer = document.getElementById('loading-container');
+        const resultsForm = document.getElementById('results-form');
+        const aiNotes = document.getElementById('ai-notes');
+        const issueTypeInput = document.getElementById('issue-type');
+        const estimatedLengthInput = document.getElementById('estimated-length');
+        const estimatedBreadthInput = document.getElementById('estimated-breadth');
+        const latitudeInput = document.getElementById('latitude');
+        const longitudeInput = document.getElementById('longitude');
+        const imageTimestampInput = document.getElementById('image-timestamp');
+        const confidenceScoreDisplay = document.getElementById('confidence-score');
+        const submitButton = document.getElementById('submit-button');
+        const submitStatus = document.getElementById('submit-status');
+        const reportsList = document.getElementById('reports-list');
+        const reportsPlaceholder = document.getElementById('reports-placeholder');
+        const userIdDisplay = document.getElementById('user-id');
+
+        // --- INITIALIZATION ---
+        function initApp() {
+            try {
+                if (!effectiveConfig.apiKey) throw new Error("Firebase config missing.");
+                const app = initializeApp(effectiveConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                // setLogLevel('Debug');
+
+                initGlobalMap();
+                initSubmissionMap();
+                
+                // Try to get location automatically on load (silent fail)
+                window.getUserLocation(false);
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        userIdDisplay.textContent = currentUserId;
+                        listenForReports();
+                    } else {
+                        currentUserId = null;
+                        userIdDisplay.textContent = "Not signed in";
+                    }
+                });
+                authenticateUser();
+            } catch (e) {
+                console.error("Init Error:", e);
+                alert("App Init Error: " + e.message);
+            }
+        }
+
+        async function authenticateUser() {
+            try {
+                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (authToken) await signInWithCustomToken(auth, authToken);
+                else await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Auth failed:", error);
+                userIdDisplay.textContent = "Auth Error";
+            }
+        }
+
+        // --- MAPS ---
+        function initGlobalMap() {
+            globalMap = L.map('global-map').setView([20, 0], 2); 
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(globalMap);
+        }
+
+        function initSubmissionMap() {
+            // Start centered on generic location, will update when we get user location
+            submissionMap = L.map('submission-map').setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(submissionMap);
+            
+            // Add click listener to map to move pin
+            submissionMap.on('click', function(e) {
+                updateSubmissionLocation(e.latlng.lat, e.latlng.lng);
+            });
+        }
+
+        // --- GEOLOCATION ---
+        // Updated with isManual flag to show alerts on click
+        window.getUserLocation = (isManual = false) => {
+            const btn = document.getElementById('get-location-btn');
+            
+            if (!navigator.geolocation) {
+                if (isManual) alert("Geolocation is not supported by this browser.");
+                return;
+            }
+            
+            if (isManual && btn) {
+                btn.textContent = "Locating...";
+                btn.disabled = true;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    // Update Inputs
+                    updateSubmissionLocation(lat, lng);
+                    
+                    // Center maps
+                    if (submissionMap) {
+                        submissionMap.setView([lat, lng], 15);
+                        submissionMap.invalidateSize();
+                    }
+                    
+                    if (isManual && btn) {
+                        btn.textContent = "Get Device Location";
+                        btn.disabled = false;
+                    }
+                },
+                (error) => {
+                    console.warn("Geolocation error:", error);
+                    
+                    if (isManual) {
+                        let msg = "Error getting location.";
+                        if(error.code === error.PERMISSION_DENIED) msg = "Location permission denied. Please enable GPS.";
+                        else if(error.code === error.TIMEOUT) msg = "Location request timed out.";
+                        else if(error.code === error.POSITION_UNAVAILABLE) msg = "Location unavailable.";
+                        alert(msg);
+                        
+                        if (btn) {
+                            btn.textContent = "Get Device Location";
+                            btn.disabled = false;
+                        }
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+
+        function updateSubmissionLocation(lat, lng) {
+            // Update Inputs
+            latitudeInput.value = lat.toFixed(6);
+            longitudeInput.value = lng.toFixed(6);
+
+            // Update Marker
+            if (submissionMarker) {
+                submissionMarker.setLatLng([lat, lng]);
+            } else {
+                submissionMarker = L.marker([lat, lng], { draggable: true }).addTo(submissionMap);
+                
+                // Add drag listener
+                submissionMarker.on('dragend', function(event) {
+                    var marker = event.target;
+                    var position = marker.getLatLng();
+                    latitudeInput.value = position.lat.toFixed(6);
+                    longitudeInput.value = position.lng.toFixed(6);
+                    submissionMap.panTo(new L.LatLng(position.lat, position.lng));
+                });
+            }
+        }
+
+        // --- IMAGE HANDLING ---
+        window.handleImageUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            window.resetAnalysisUI(); // Reset previous results but keep location
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Resize to avoid API limits
+                    const MAX_DIM = 1536; // Was 800. 1536px gives much better OCR/small object detection.
+                    let w = img.width, h = img.height;
+                    if (w > h) { if (w > MAX_DIM) { h *= MAX_DIM/w; w = MAX_DIM; } }
+                    else { if (h > MAX_DIM) { w *= MAX_DIM/h; h = MAX_DIM; } }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85); 
+                    currentImageBase64 = dataUrl.split(',')[1];
+                    imagePreview.src = dataUrl;
+                    imagePreviewContainer.classList.remove('hidden');
+                    analysisSection.classList.remove('hidden');
+                    
+                    // Invalidate file input so same file can be selected again
+                    event.target.value = '';
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.resetAnalysisUI = () => {
+            analyzeButton.disabled = false;
+            analyzeButton.classList.remove('hidden');
+            loadingContainer.classList.add('hidden');
+            resultsForm.classList.add('hidden');
+            submitButton.disabled = false;
+            submitStatus.classList.add('hidden');
+            aiAnalysisResult = null;
+            privacyBadge.classList.add('hidden');
+            
+            // Hide the image preview and clear data
+            imagePreviewContainer.classList.add('hidden');
+            imagePreview.src = '';
+            currentImageBase64 = null;
+            
+            // Clear input values so the same file can be selected again if deleted
+            document.getElementById('camera-input').value = '';
+            document.getElementById('gallery-input').value = '';
+        }
+
+        // --- REDACTION LOGIC ---
+        // Function to draw black boxes over sensitive areas on the image
+        async function redactSensitiveData(boundingBoxes) {
+            if (!boundingBoxes || boundingBoxes.length === 0) return;
+
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Draw original image
+                    ctx.drawImage(img, 0, 0);
+                    
+                    // Set Redaction Style
+                    ctx.fillStyle = "black";
+                    
+                    // Apply redaction
+                    boundingBoxes.forEach(box => {
+                        // Gemini 1.5 often uses 0-1000 scale for normalized coords in JSON mode
+                        // We need to check documentation or infer. 
+                        // Prompt will ask for 0-1000 scale to be safe.
+                        const ymin = (box.ymin / 1000) * img.height;
+                        const xmin = (box.xmin / 1000) * img.width;
+                        const ymax = (box.ymax / 1000) * img.height;
+                        const xmax = (box.xmax / 1000) * img.width;
+                        
+                        const w = xmax - xmin;
+                        const h = ymax - ymin;
+                        
+                        ctx.fillRect(xmin, ymin, w, h);
+                    });
+                    
+                    const redactedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    resolve(redactedDataUrl);
+                };
+                // Load the current image into the object
+                img.src = "data:image/jpeg;base64," + currentImageBase64;
+            });
+        }
+
+        // --- GEMINI API ---
+        window.analyzeImage = async () => {
+            if (!currentImageBase64) return alert("Please upload an image first.");
+            
+            analyzeButton.classList.add('hidden');
+            loadingContainer.classList.remove('hidden');
+            resultsForm.classList.add('hidden');
+
+            // Force refresh of map to ensure it renders correctly after being unhidden
+            setTimeout(() => { submissionMap.invalidateSize(); }, 100);
+
+            const systemPrompt = `You are a pavement accessibility expert & privacy AI. 
+            1. Analyze the image for accessibility issues. 
+            2. DETECT FACES AND LICENSE PLATES for privacy redaction. Return their bounding boxes in 0-1000 scale.
+            3. Extract visual text stamps (Lat/Long/Time). 
+            Return pure JSON.`;
+            
+            // Updated Prompt to be stricter about plate detection
+            const userPrompt = `Analyze this pavement image. 
+            Identify issues (e.g. cracks, obstacles). Estimate dimensions. 
+            Extract visual coordinates/time stamps. 
+            CRITICAL: Look closely for vehicles and people. Provide bounding boxes (ymin, xmin, ymax, xmax) for ALL human faces and vehicle license plates using a 0-1000 scale. Even small or partial plates must be redacted.`;
+
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: userPrompt }, { inlineData: { mimeType: "image/jpeg", data: currentImageBase64 } }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema }
+            };
+            
+            try {
+                const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error("Invalid API response.");
+                aiAnalysisResult = JSON.parse(text);
+                
+                // --- PRIVACY REDACTION STEP ---
+                if (aiAnalysisResult.privacyBoundingBoxes && aiAnalysisResult.privacyBoundingBoxes.length > 0) {
+                    const newImageBase64Url = await redactSensitiveData(aiAnalysisResult.privacyBoundingBoxes);
+                    // Update current image to the redacted one
+                    currentImageBase64 = newImageBase64Url.split(',')[1];
+                    imagePreview.src = newImageBase64Url;
+                    privacyBadge.classList.remove('hidden');
+                    privacyBadge.textContent = `🛡️ Privacy Shield: ${aiAnalysisResult.privacyBoundingBoxes.length} item(s) redacted`;
+                }
+                
+                displayAnalysisResults(aiAnalysisResult);
+            } catch (error) {
+                console.error("AI Error:", error);
+                let errorMessage = error.message;
+                if (errorMessage.includes('403')) {
+                    errorMessage += ". This usually means your API key has restrictions blocking this domain. Please check Google Cloud Console > Credentials.";
+                }
+                alert(`Analysis failed: ${errorMessage}`);
+                analyzeButton.classList.remove('hidden');
+            } finally {
+                loadingContainer.classList.add('hidden');
+            }
+        };
+        
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const res = await fetch(url, options);
+                    if (res.ok) return res;
+                    if (res.status === 429 || res.status >= 500) {
+                         await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
+                    } else return res;
+                } catch (e) { await new Promise(r => setTimeout(r, delay * Math.pow(2, i))); }
+            }
+            return fetch(url, options);
+        }
+
+        function displayAnalysisResults(data) {
+            aiNotes.textContent = data.analysisNotes || "No notes.";
+            issueTypeInput.value = data.issueType || "N/A";
+            estimatedLengthInput.value = data.estimatedLengthMeters || "0";
+            estimatedBreadthInput.value = data.estimatedBreadthMeters || "0";
+            
+            // Only overwrite location if AI found EXPLICIT text coordinates in the image
+            // Otherwise keep the GPS coordinates
+            if (data.latitude && data.longitude) {
+                updateSubmissionLocation(data.latitude, data.longitude);
+                submissionMap.setView([data.latitude, data.longitude], 15);
+            }
+            
+            // Fallback logic: Use AI timestamp if available and not "null", otherwise use current time
+            let timeVal = data.imageTimestamp;
+            if (!timeVal || String(timeVal).toLowerCase() === 'null') {
+                timeVal = new Date().toLocaleString();
+            }
+            imageTimestampInput.value = timeVal;
+
+            confidenceScoreDisplay.textContent = `${((data.confidenceScore||0)*100).toFixed(1)}%`;
+            resultsForm.classList.remove('hidden');
+        }
+
+        // --- SUBMIT ---
+        window.submitReport = async () => {
+            if (!currentUserId || !aiAnalysisResult) return alert("Auth or Analysis missing.");
+            submitButton.disabled = true;
+            submitStatus.textContent = "Submitting...";
+            submitStatus.classList.remove('hidden', 'text-red-600');
+            submitStatus.classList.add('text-yellow-600');
+
+            const report = {
+                userId: currentUserId,
+                aiIssueType: aiAnalysisResult.issueType,
+                aiLengthMeters: aiAnalysisResult.estimatedLengthMeters,
+                aiBreadthMeters: aiAnalysisResult.estimatedBreadthMeters,
+                aiConfidence: aiAnalysisResult.confidenceScore,
+                aiNotes: aiAnalysisResult.analysisNotes,
+                
+                finalIssueType: issueTypeInput.value,
+                finalLengthMeters: parseFloat(estimatedLengthInput.value)||0,
+                finalBreadthMeters: parseFloat(estimatedBreadthInput.value)||0,
+                finalLatitude: parseFloat(latitudeInput.value)||null,
+                finalLongitude: parseFloat(longitudeInput.value)||null,
+                finalImageTimestamp: imageTimestampInput.value,
+                
+                userCorrected: (issueTypeInput.value !== aiAnalysisResult.issueType),
+                createdAt: new Date()
+            };
+
+            try {
+                const path = `/artifacts/${appId}/public/data/reports`;
+                await addDoc(collection(db, path), report);
+                submitStatus.textContent = "Submitted Successfully!";
+                submitStatus.classList.replace('text-yellow-600', 'text-green-600');
+                
+                setTimeout(() => {
+                    resultsForm.classList.add('hidden');
+                    analysisSection.classList.add('hidden');
+                    imagePreviewContainer.classList.add('hidden');
+                    currentImageBase64 = null;
+                }, 2000);
+            } catch (e) {
+                submitStatus.textContent = "Error: " + e.message;
+                submitStatus.classList.replace('text-yellow-600', 'text-red-600');
+                submitButton.disabled = false;
+            }
+        };
+
+        // --- FEED ---
+        function listenForReports() {
+            if (!db) return;
+            const q = query(collection(db, `/artifacts/${appId}/public/data/reports`));
+            onSnapshot(q, (snapshot) => {
+                if (snapshot.empty) {
+                    reportsList.innerHTML = ''; reportsPlaceholder.classList.remove('hidden'); return;
+                }
+                reportsPlaceholder.classList.add('hidden');
+                let reports = [];
+                snapshot.forEach(doc => reports.push({id: doc.id, data: doc.data()}));
+                reports.sort((a,b) => (b.data.createdAt?.seconds||0) - (a.data.createdAt?.seconds||0));
+                
+                allReports = reports;
+                renderReports(reports);
+                updateGlobalMap(reports);
+            });
+        }
+
+        function updateGlobalMap(reports) {
+            if (!globalMap) return;
+            mapMarkers.forEach(m => m.remove());
+            mapMarkers = [];
+            let bounds = [];
+            
+            reports.forEach(r => {
+                const d = r.data;
+                if (d.finalLatitude && d.finalLongitude) {
+                    const m = L.marker([d.finalLatitude, d.finalLongitude])
+                        .bindPopup(`<b>${d.finalIssueType}</b><br>${d.finalLengthMeters}m long<br><span style="font-size:0.8em">${new Date((d.createdAt?.seconds||0)*1000).toLocaleDateString()}</span>`)
+                        .addTo(globalMap);
+                    mapMarkers.push(m);
+                    bounds.push([d.finalLatitude, d.finalLongitude]);
+                }
+            });
+            if (bounds.length > 0) globalMap.fitBounds(bounds, {padding: [50,50]});
+        }
+
+        function renderReports(reports) {
+            reportsList.innerHTML = '';
+            reports.forEach(r => {
+                const d = r.data;
+                const loc = (d.finalLatitude) ? `📍 ${d.finalLatitude.toFixed(4)}, ${d.finalLongitude.toFixed(4)}` : '';
+                const el = document.createElement('div');
+                el.className = 'border border-gray-200 p-3 rounded-lg bg-gray-50 text-sm';
+                el.innerHTML = `<div class="font-bold text-blue-700 flex justify-between"><span>${d.finalIssueType}</span><span>${d.finalLengthMeters}m</span></div>
+                                <div class="text-xs text-gray-500 mt-1">${loc}</div>
+                                <div class="text-xs text-gray-400 mt-1">${new Date((d.createdAt?.seconds||0)*1000).toLocaleString()}</div>`;
+                reportsList.appendChild(el);
+            });
+        }
+
+        // --- CSV ---
+        window.downloadCSV = () => {
+            if (!allReports.length) return alert("No reports.");
+            const keys = ["userId","finalIssueType","finalLengthMeters","finalLatitude","finalLongitude","finalImageTimestamp","aiConfidence","createdAt"];
+            let csv = keys.join(",") + "\n";
+            allReports.forEach(r => {
+                const d = r.data;
+                const row = keys.map(k => {
+                    let val = d[k];
+                    if (k === 'createdAt') val = new Date((val?.seconds||0)*1000).toISOString();
+                    return `"${String(val||'').replace(/"/g, '""')}"`;
+                });
+                csv += row.join(",") + "\n";
+            });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+            link.download = "walksafe_data.csv";
+            link.click();
+        }
+
+        // --- PWA ---
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('SW registered:', reg.scope))
+                .catch(err => console.log('SW registration failed (this is expected in preview/blob environments):', err));
+        }
+        
+        initApp();
+    </script>
+</body>
+</html>
